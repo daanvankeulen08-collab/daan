@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -744,11 +745,32 @@ def _safe_hash(path: Path) -> str | None:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run_round3() -> Path:
-    settings = load_settings(
-        db_path=DATA_DIR / "block15_round3.sqlite3",
-        jsonl_path=DATA_DIR / "block15_round3_events.jsonl",
+def _round3_store_paths() -> tuple[Path, Path]:
+    """Resolve the Round 3 store paths, allowing separate stores per arm.
+
+    Defaults are exactly ``block15_round3.sqlite3`` and
+    ``block15_round3_events.jsonl`` under ``DATA_DIR``.
+    ``BLOCK15_DB_PATH`` / ``BLOCK15_JSONL_PATH`` override the file names;
+    relative names stay under ``DATA_DIR`` and absolute paths are honoured.
+    With both variables unset the resolved paths are identical to the values
+    previously hard-coded here.
+    """
+
+    db_name = os.environ.get("BLOCK15_DB_PATH", "block15_round3.sqlite3")
+    jsonl_name = os.environ.get(
+        "BLOCK15_JSONL_PATH", "block15_round3_events.jsonl"
     )
+    db_path = Path(db_name)
+    jsonl_path = Path(jsonl_name)
+    return (
+        db_path if db_path.is_absolute() else DATA_DIR / db_path,
+        jsonl_path if jsonl_path.is_absolute() else DATA_DIR / jsonl_path,
+    )
+
+
+def run_round3() -> Path:
+    db_path, jsonl_path = _round3_store_paths()
+    settings = load_settings(db_path=db_path, jsonl_path=jsonl_path)
     settings.ensure_data_dir()
     ground_truth_path = DATA_DIR / "block15_round3_ground_truth.json"
     if not ground_truth_path.exists():
