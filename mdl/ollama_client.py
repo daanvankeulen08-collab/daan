@@ -164,19 +164,33 @@ class OllamaClient:
 
         message = data.get("message") or {}
         content = message.get("content", "")
-        parsed = _extract_json(content)
+        prompt_eval_count = _optional_int(data.get("prompt_eval_count"))
+        eval_count = _optional_int(data.get("eval_count"))
+        done_reason = data.get("done_reason")
+        try:
+            parsed = _extract_json(content)
+        except ModelOutputError as exc:
+            # Preserve the failed output and generation metadata so callers can
+            # log them; today they would be discarded before ModelResponse exists.
+            raise ModelOutputError(
+                str(exc),
+                raw_content=content,
+                done_reason=done_reason,
+                prompt_eval_count=prompt_eval_count,
+                eval_count=eval_count,
+            ) from exc
 
         return ModelResponse(
             content=content,
             parsed=parsed,
-            prompt_eval_count=_optional_int(data.get("prompt_eval_count")),
-            eval_count=_optional_int(data.get("eval_count")),
+            prompt_eval_count=prompt_eval_count,
+            eval_count=eval_count,
             total_duration_ns=_optional_int(data.get("total_duration")),
             load_duration_ns=_optional_int(data.get("load_duration")),
             eval_duration_ns=_optional_int(data.get("eval_duration")),
             wall_ms=wall_ms,
             raw=data,
-            done_reason=data.get("done_reason"),
+            done_reason=done_reason,
         )
 
     def _post(self, path: str, payload: dict) -> httpx.Response:

@@ -20,7 +20,29 @@ class ModelTimeoutError(ModelError):
 
 
 class ModelOutputError(ModelError):
-    """The model response was not valid JSON or failed schema validation."""
+    """The model response was not valid JSON or failed schema validation.
+
+    When the failure happens while parsing a completed Ollama response, the
+    client also attaches the raw content and the generation metadata that would
+    otherwise be lost before a ``ModelResponse`` can be built.  All four
+    attributes default to ``None`` so existing ``ModelOutputError("...")``
+    constructions keep working unchanged.
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        raw_content: str | None = None,
+        done_reason: str | None = None,
+        prompt_eval_count: int | None = None,
+        eval_count: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.raw_content = raw_content
+        self.done_reason = done_reason
+        self.prompt_eval_count = prompt_eval_count
+        self.eval_count = eval_count
 
 
 class ToolError(MdlError):
