@@ -265,6 +265,92 @@ def test_validate_v2_raises_on_unimplemented_type():
         contract.validate_v2(1, {"type": "integer"})
 
 
+ANNOTATION_KEYWORDS = (
+    "title",
+    "description",
+    "$schema",
+    "$comment",
+    "default",
+    "examples",
+)
+
+
+@pytest.mark.parametrize("keyword", ANNOTATION_KEYWORDS)
+def test_validate_v2_accepts_annotation_keyword_at_top_level(keyword):
+    schema = _schema_with(lambda s: s.__setitem__(keyword, "annotation"))
+    ok, violations = contract.validate_v2(
+        _conforming(contract.ANSWER_FIRST_V2), schema
+    )
+    assert (ok, violations) == (True, [])
+
+
+@pytest.mark.parametrize("keyword", ANNOTATION_KEYWORDS)
+def test_validate_v2_accepts_annotation_keyword_inside_properties(keyword):
+    schema = _schema_with(
+        lambda s: s["properties"]["final_answer"].__setitem__(
+            keyword, "annotation"
+        )
+    )
+    ok, violations = contract.validate_v2(
+        _conforming(contract.ANSWER_FIRST_V2), schema
+    )
+    assert (ok, violations) == (True, [])
+
+
+@pytest.mark.parametrize("keyword", ANNOTATION_KEYWORDS)
+def test_validate_v2_accepts_annotation_keyword_inside_items(keyword):
+    schema = _schema_with(
+        lambda s: s["properties"]["derivation"]["items"].__setitem__(
+            keyword, "annotation"
+        )
+    )
+    ok, violations = contract.validate_v2(
+        _conforming(contract.ANSWER_FIRST_V2), schema
+    )
+    assert (ok, violations) == (True, [])
+
+
+def test_validate_v2_accepts_all_annotation_keywords_together():
+    schema = _schema_with(
+        lambda s: (
+            s.__setitem__("title", "answer contract"),
+            s.__setitem__("$comment", "annotation only"),
+            s["properties"]["derivation"]["items"].__setitem__(
+                "description", "one checkable step"
+            ),
+        )
+    )
+    ok, violations = contract.validate_v2(
+        _conforming(contract.ANSWER_FIRST_V2), schema
+    )
+    assert (ok, violations) == (True, [])
+
+
+def test_annotation_keywords_do_not_change_constraint_checking():
+    schema = _schema_with(
+        lambda s: s["properties"]["final_answer"].__setitem__(
+            "description", "final answer"
+        )
+    )
+    obj = _conforming(contract.ANSWER_FIRST_V2)
+    obj["final_answer"] = ""
+    ok, violations = contract.validate_v2(obj, schema)
+    assert ok is False
+    assert any("final_answer" in item for item in violations)
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    ("pattern", "enum", "$ref", "exclusiveMinimum", "anyOf", "format"),
+)
+def test_validate_v2_still_raises_on_assertion_keywords(keyword):
+    schema = _schema_with(
+        lambda s: s["properties"]["final_answer"].__setitem__(keyword, "x")
+    )
+    with pytest.raises(ValueError, match=re.escape(keyword)):
+        contract.validate_v2(_conforming(contract.ANSWER_FIRST_V2), schema)
+
+
 # ---------------------------------------------------------------------------
 # 4. validate_v2 accepts conforming objects, including inclusive boundaries
 # ---------------------------------------------------------------------------

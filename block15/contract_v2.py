@@ -19,7 +19,10 @@ Both schemas have exactly the same shape and constraints.  Only the insertion
 order of ``required`` and ``properties`` differs.  ``validate_v2`` enforces
 every declared constraint and never repairs, clamps, or coerces values; it
 raises on any schema keyword it does not implement instead of silently
-under-validating.
+under-validating.  The only exemption is the set of annotation-only keywords
+(``title``, ``description``, ``$schema``, ``$comment``, ``default``,
+``examples``), which cannot change a validation outcome and are accepted at
+any depth.
 
 Contract v2 uses one instruction shared by both arms.  The ceiling study's
 instruction was constant across arms, which is what allowed schema-order
@@ -107,6 +110,14 @@ INSTRUCTIONS_V2: dict[str, str] = {
 }
 
 
+# Annotation-only keywords.  They never change whether a value validates, so
+# the guard accepts them at any depth.  Every *assertion* keyword the validator
+# does not implement (pattern, enum, $ref, anyOf, ...) still raises, because
+# silently ignoring a constraint is silent under-validation.
+_ANNOTATION_KEYWORDS: frozenset[str] = frozenset(
+    {"title", "description", "$schema", "$comment", "default", "examples"}
+)
+
 _ALLOWED_KEYWORDS: dict[str, frozenset[str]] = {
     "object": frozenset(
         {"type", "additionalProperties", "required", "properties"}
@@ -118,7 +129,14 @@ _ALLOWED_KEYWORDS: dict[str, frozenset[str]] = {
 
 
 def _assert_supported_schema(schema: object, path: str = "$") -> None:
-    """Raise if ``schema`` uses any keyword or type this validator ignores."""
+    """Raise if ``schema`` uses any keyword or type this validator ignores.
+
+    Annotation-only keywords (``title``, ``description``, ``$schema``,
+    ``$comment``, ``default``, ``examples``) are accepted at any depth because
+    they cannot change a validation outcome.  Every other keyword outside this
+    validator's implemented set raises, so no declared constraint is silently
+    dropped.
+    """
     if not isinstance(schema, dict):
         raise ValueError(f"{path}: schema node must be an object")
     expected = schema.get("type")
@@ -126,7 +144,9 @@ def _assert_supported_schema(schema: object, path: str = "$") -> None:
         raise ValueError(
             f"{path}: unsupported or missing schema type {expected!r}"
         )
-    unsupported = sorted(set(schema) - _ALLOWED_KEYWORDS[expected])
+    unsupported = sorted(
+        set(schema) - _ALLOWED_KEYWORDS[expected] - _ANNOTATION_KEYWORDS
+    )
     if unsupported:
         raise ValueError(
             f"{path}: unsupported schema keyword(s): {', '.join(unsupported)}"
