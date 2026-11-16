@@ -306,7 +306,7 @@ FROZEN_GROUND_TRUTH_SHA256 = "b0c4d70424d6a678ca840c43bae66afee3116d2637e94ff072
 # FROZEN: pre-existing protected artifacts.  Files created by THIS block are
 # excluded and reported separately as NEW artifacts, including this module,
 # the pre-registration/report, the new tests and the new data stores/results.
-_NEW_DATA_PREFIX = "block15_order_v2_"
+_NEW_DATA_PREFIX = "block15_order_v2"
 _NEW_ROOT_FILES = frozenset({"PREREG_ORDER_V2.md", "REPORT_ORDER_V2.md"})
 _FROZEN_EXACT_FILES = (
     "block15/ceiling_research.py",
