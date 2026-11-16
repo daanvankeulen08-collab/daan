@@ -1496,8 +1496,26 @@ def run_study() -> Path:
         digest, model_info = _verify_model(client)
         common["model_digest"] = digest
         common["model_info"] = model_info
+        experiment_id = store.create_experiment(
+            seed=str(SEED),
+            model=MODEL,
+            model_digest=digest,
+            parameters={
+                "run_id": f"order_v2_{ts}",
+                "kind": "order_v2_final_answer_position",
+                "arms": list(ARMS),
+                "planned_calls": PLANNED_CALLS,
+                "num_predict": NUM_PREDICT,
+                "temperature": TEMPERATURE,
+                "top_p": TOP_P,
+                "repeat_penalty": REPEAT_PENALTY,
+                "seed": SEED,
+            },
+            context_limit=NUM_CTX,
+        )
+        common["experiment_id"] = experiment_id
         runner = OrderV2Runner(
-            client, store, digest, model_info, f"order_v2_{ts}", copy_checks
+            client, store, digest, model_info, experiment_id, copy_checks
         )
         for arm in ARMS:
             record = dict(common)
@@ -1509,7 +1527,7 @@ def run_study() -> Path:
                 }
             )
             store.log_event(
-                runner.run_id,
+                experiment_id,
                 "order_v2_arm_started",
                 {"arm": arm, "tasks": [t.id for t in TASKS]},
             )
