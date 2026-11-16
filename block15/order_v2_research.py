@@ -308,6 +308,7 @@ FROZEN_GROUND_TRUTH_SHA256 = "b0c4d70424d6a678ca840c43bae66afee3116d2637e94ff072
 # excluded and reported separately as NEW artifacts, including this module,
 # the pre-registration/report, the new tests and the new data stores/results.
 _NEW_DATA_PREFIX = "block15_order_v2"
+_NEW_DATA_PREFIXES = ("block15_order_v2", "block15_diagnosis")
 _NEW_ROOT_FILES = frozenset({
     "PREREG_ORDER_V2.md", "REPORT_ORDER_V2.md",
     "PREREG_DIAGNOSIS.md", "REPORT_DIAGNOSIS.md",
@@ -347,7 +348,7 @@ def frozen_paths(root: Path | None = None) -> list[str]:
     paths.update(
         path
         for path in _relative_files(root, "data/*")
-        if not Path(path).name.startswith(_NEW_DATA_PREFIX)
+        if not any(Path(path).name.startswith(p) for p in _NEW_DATA_PREFIXES)
     )
     for pattern in ("BLOCK15_*.md", "PREREG_*.md", "REPORT_*.md", "README_*.md"):
         paths.update(p for p in _relative_files(root, pattern) if p not in _NEW_ROOT_FILES)

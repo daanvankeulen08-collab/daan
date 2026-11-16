@@ -425,6 +425,8 @@ def run_study() -> Path:
             if free < MIN_FREE_MB:
                 raise GuardStop("free memory below floor")
 
+    state["guard"] = guard
+
     common = {
         "model": MODEL,
         "model_digest": None,
