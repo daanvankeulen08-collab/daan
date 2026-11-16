@@ -28,6 +28,7 @@ import json
 import math
 import random
 import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -307,7 +308,10 @@ FROZEN_GROUND_TRUTH_SHA256 = "b0c4d70424d6a678ca840c43bae66afee3116d2637e94ff072
 # excluded and reported separately as NEW artifacts, including this module,
 # the pre-registration/report, the new tests and the new data stores/results.
 _NEW_DATA_PREFIX = "block15_order_v2"
-_NEW_ROOT_FILES = frozenset({"PREREG_ORDER_V2.md", "REPORT_ORDER_V2.md"})
+_NEW_ROOT_FILES = frozenset({
+    "PREREG_ORDER_V2.md", "REPORT_ORDER_V2.md",
+    "PREREG_DIAGNOSIS.md", "REPORT_DIAGNOSIS.md",
+})
 _FROZEN_EXACT_FILES = (
     "block15/ceiling_research.py",
     "block15/heldout_research.py",
@@ -379,6 +383,39 @@ def _sha256_file(path: Path) -> str | None:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def git_blob_sha256(path: Path, *, commit: str = "HEAD") -> str | None:
+    """Additive helper: SHA-256 of a file's GIT BLOB bytes at ``commit``.
+
+    Unlike ``_sha256_file`` (which hashes the worktree bytes, where Git with
+    core.autocrlf=true stores CRLF), this hashes the canonical blob bytes that
+    Git stores (LF).  This is the hash to record for source provenance so the
+    value is independent of worktree line-ending conversion.  Returns None if
+    the file is not tracked at that commit or Git is unavailable.
+    """
+    root = DATA_DIR.parent
+    try:
+        rel = path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "show", f"{commit}:{rel}"],
+            capture_output=True,
+            cwd=str(root),
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return hashlib.sha256(proc.stdout).hexdigest()
+
+
+def module_git_blob_sha256() -> str | None:
+    """SHA-256 of this module's committed GIT BLOB (line-ending invariant)."""
+    return git_blob_sha256(Path(__file__))
 
 
 def _sha256_text(text: str) -> str:
@@ -1496,6 +1533,9 @@ def run_study() -> Path:
         digest, model_info = _verify_model(client)
         common["model_digest"] = digest
         common["model_info"] = model_info
+        # Additive: record the module's Git blob hash (line-ending invariant)
+        # in every result file so each arm can be tied to the exact source.
+        common["module_git_blob_sha256"] = module_git_blob_sha256()
         experiment_id = store.create_experiment(
             seed=str(SEED),
             model=MODEL,
@@ -1724,7 +1764,9 @@ def summarize() -> dict:
                 | {STORE_DB_NAME, STORE_JSONL_NAME}
             )
         },
-        "module_sha256": _sha256_file(Path(__file__)),
+        # Canonical module hash is the Git blob hash (line-ending invariant).
+        "module_sha256": module_git_blob_sha256(),
+        "module_worktree_sha256": _sha256_file(Path(__file__)),
     }
 
 

@@ -14,6 +14,8 @@ Both gates pass; the comparison may be attributed to schema field order under th
 
 - Primary count, answer_first: **0 / 30**
 - Primary count, derivation_first: **18 / 30**
+  - Verified breakdown of the 18 passes (STEP 0 check): **13 bare integers + 1 verbose (V2C12, whose derivation correctly computes 188160) + 4 minimality (V2M01, V2M05, V2M12, V2M13) = 18**. The 14 coefficient passes are 13 bare + 1 verbose; the 4 minimality passes are all bare-in-structure answers.
+  - Strict-diagnostic check: **17 of the 18** also pass the stored stricter diagnostic (`strict_single_int` for coefficient, `strict_set_equal` for minimality). The single exception is V2C12, whose verbose multi-integer `final_answer` cannot be a single integer. This is only 1 lower than 18, i.e. not materially lower; the primary endpoint is presence-based as pre-registered.
 - Difference (derivation - answer): **+18** tasks
 - Risk difference: **+0.6000** (paired bootstrap 95% CI [0.4333, 0.7667])
 - Discordant pairs: answer-only correct b=0; derivation-only correct c=18
@@ -118,7 +120,7 @@ The 38 unchanged LIVE paths (all `mdl/*.py` and the remaining `tests/*.py`) have
 
 ## 8. Limits — what a pass does not prove
 
-A pass does not prove general capability, generalisation beyond this one positional swap, server-side enforcement internals, or model understanding. This is a single seed (42), n=30, one positional swap (final_answer first vs derivation first), one local model quantisation. The exact task set and prompt text are pre-registered; the task mix (15 coefficient, 15 minimality) is narrow. The effect may be specific to forced-order JSON decoding on this model. Confidence values are self-reported by the model and are not calibrated. The derivation-first arm's 18 primary passes are concentrated in coefficient tasks (15/15) with only 3/15 minimality tasks passing, so the effect is not uniform across task kinds.
+A pass does not prove general capability, generalisation beyond this one positional swap, server-side enforcement internals, or model understanding. This is a single seed (42), n=30, one positional swap (final_answer first vs derivation first), one local model quantisation. The exact task set and prompt text are pre-registered; the task mix (15 coefficient, 15 minimality) is narrow. The effect may be specific to forced-order JSON decoding on this model. Confidence values are self-reported by the model and are not calibrated. The derivation-first arm's 18 primary passes are 14 coefficient tasks (13 bare integers plus the verbose V2C12) and 4 minimality tasks (V2M01, V2M05, V2M12, V2M13) — i.e. 14/15 coefficient and 4/15 minimality — so the effect is not uniform across task kinds.
 
 ## 9. Mandatory deviation and objection report
 
@@ -127,6 +129,7 @@ A pass does not prove general capability, generalisation beyond this one positio
 - One generation call was made in a first attempt that crashed before any result was persisted: `log_step` was called with an experiment id that had not been registered, raising an SQLite foreign-key error after the first `chat_json` response was received but before it was stored. The orphan partial store files were removed and the harness was fixed (commit `589bfbb`, `store.create_experiment(...)` before logging). The crashed call produced no auditable cell and is excluded from all 60 reported cells; total generation calls in this block are therefore 61, still within the 70-call budget. No result, endpoint or gate was altered by the fix — it is store-logging infrastructure only.
 - A second post-run edit corrected the FROZEN exclusion prefix from `block15_order_v2_` to `block15_order_v2` so the store DB `data/block15_order_v2.sqlite3` is recognised as a NEW artifact rather than counted as FROZEN. This aligns the implementation with the pre-registered rule that all `data/block15_order_v2_*` new artifacts are excluded from FROZEN. It changes only the read-only verification/enumeration helper; no result cell, endpoint, gate or sampling value changed. Re-running the read-only `--summarize` after this fix produced the FROZEN numbers in section 6 (118/118, manifest hash matching baseline).
 - The report is committed after the run, as specified; the pre-registration commit (`9dac3e4`) predates all generation.
+- STEP 0 correction: the `module_sha256` quoted in section 7 (`a6fcbcde…`) was the worktree CRLF hash; the canonical **Git blob** hash of the module at the report commit is `26829883d0cb9e63a406e09917bd1bc5cae608424191be73b89fc9c8ae7eab32`, and at the generating commit `589bfbb` it is `fa40c0f3356c0c1b0ef104ef4dcb5678a8eb2c568346572950427d3aeb72243a`. An additive helper (`git_blob_sha256`) now records the blob hash per arm in future result files. This does not change any result cell.
 
 ### b) Deviations from the reference contract
 
