@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from block15 import contract_v2 as contract
+from block15.round3_tasks import EXPERIMENTAL_SCHEMA
 from block15.tasks import SYSTEM_PROMPT as ROUND3_SYSTEM_PROMPT
 from mdl.config import load_settings
 from mdl.errors import ModelOutputError
@@ -23,6 +24,8 @@ EXPECTED_ORDER = {
     "answer_first": ["final_answer", "derivation", "uncertainty", "confidence"],
     "derivation_first": ["derivation", "final_answer", "uncertainty", "confidence"],
 }
+
+NEUTRAL_ORDER = ["confidence", "derivation", "final_answer", "uncertainty"]
 
 EXPECTED_ANNOTATION = {
     "derivation": "derivation (array of short, independently checkable steps)",
@@ -34,7 +37,7 @@ EXPECTED_ANNOTATION = {
 
 def _instruction_fields(instruction: str) -> list[str]:
     """Parse the declared field list instead of eyeballing the string."""
-    marker = "exactly these fields, in this order:"
+    marker = "exactly these fields:"
     start = instruction.index(marker) + len(marker)
     clause = instruction[start:].split(". ", 1)[0]
     return re.findall(r"([a-z_]+) \(", clause)
@@ -51,61 +54,56 @@ def _conforming(schema: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 1. Instruction order must equal schema required order, in both arms
+# 1. One neutral instruction for both arms; schema order is the only variable
 # ---------------------------------------------------------------------------
 
 
+def test_shared_instruction_is_identical_for_both_arms():
+    instruction = contract.OUTPUT_INSTRUCTION_V2
+    assert contract.INSTRUCTIONS_V2["answer_first"] is instruction
+    assert contract.INSTRUCTIONS_V2["derivation_first"] is instruction
+    assert (
+        contract.INSTRUCTIONS_V2["answer_first"]
+        is contract.INSTRUCTIONS_V2["derivation_first"]
+    )
+    assert not hasattr(contract, "ANSWER_FIRST_INSTRUCTION")
+    assert not hasattr(contract, "DERIVATION_FIRST_INSTRUCTION")
+
+
+def test_shared_instruction_lists_fields_alphabetically():
+    parsed = _instruction_fields(contract.OUTPUT_INSTRUCTION_V2)
+    assert parsed == NEUTRAL_ORDER
+    assert parsed == sorted(parsed)
+    assert parsed != EXPECTED_ORDER["answer_first"]
+    assert parsed != EXPECTED_ORDER["derivation_first"]
+    for fragment in EXPECTED_ANNOTATION.values():
+        assert fragment in contract.OUTPUT_INSTRUCTION_V2
+
+
+def test_shared_instruction_has_no_ordering_language():
+    text = contract.OUTPUT_INSTRUCTION_V2.lower()
+    assert "in this order" not in text
+    assert "work through the derivation first" not in text
+    assert "answer first" not in text
+    assert "first" not in text
+    assert "literal newline" in text
+    assert "do not use markdown or code fences" in text
+
+
 @pytest.mark.parametrize(
-    ("arm", "instruction", "schema"),
+    ("arm", "schema"),
     [
-        ("answer_first", contract.ANSWER_FIRST_INSTRUCTION, contract.ANSWER_FIRST_V2),
-        (
-            "derivation_first",
-            contract.DERIVATION_FIRST_INSTRUCTION,
-            contract.DERIVATION_FIRST_V2,
-        ),
+        ("answer_first", contract.ANSWER_FIRST_V2),
+        ("derivation_first", contract.DERIVATION_FIRST_V2),
     ],
 )
-def test_instruction_order_matches_schema_required_order(arm, instruction, schema):
-    parsed = _instruction_fields(instruction)
-    assert parsed == EXPECTED_ORDER[arm]
-    assert parsed == schema["required"]
+def test_schema_required_order_is_unchanged(arm, schema):
+    assert schema["required"] == EXPECTED_ORDER[arm]
     assert list(schema["properties"]) == schema["required"]
 
 
-@pytest.mark.parametrize(
-    ("instruction", "expected"),
-    [
-        (
-            contract.ANSWER_FIRST_INSTRUCTION,
-            [
-                "final_answer (string)",
-                "derivation (array of short, independently checkable steps)",
-                "uncertainty (string)",
-                "confidence (number from 0 to 1)",
-            ],
-        ),
-        (
-            contract.DERIVATION_FIRST_INSTRUCTION,
-            [
-                "derivation (array of short, independently checkable steps)",
-                "final_answer (string)",
-                "uncertainty (string)",
-                "confidence (number from 0 to 1)",
-            ],
-        ),
-    ],
-)
-def test_instruction_annotates_every_field_with_its_type(instruction, expected):
-    for fragment in EXPECTED_ANNOTATION.values():
-        assert fragment in instruction
-    positions = [instruction.index(fragment) for fragment in expected]
-    assert positions == sorted(positions)
-
-
-def test_answer_first_omits_derivation_first_clause():
-    assert "Work through the derivation first" in contract.DERIVATION_FIRST_INSTRUCTION
-    assert "Work through the derivation first" not in contract.ANSWER_FIRST_INSTRUCTION
+def test_derivation_first_schema_is_round3_experimental_schema():
+    assert contract.DERIVATION_FIRST_V2 == EXPERIMENTAL_SCHEMA
 
 
 def test_system_prompt_is_round3_verbatim():
@@ -229,6 +227,44 @@ def test_validate_v2_rejects(mutate):
     assert obj == snapshot, "validator must not repair, clamp, or coerce"
 
 
+def _schema_with(mutate) -> dict:
+    schema = copy.deepcopy(contract.ANSWER_FIRST_V2)
+    mutate(schema)
+    return schema
+
+
+@pytest.mark.parametrize(
+    ("keyword", "mutate"),
+    [
+        (
+            "pattern",
+            lambda s: s["properties"]["final_answer"].__setitem__(
+                "pattern", "^[0-9]+$"
+            ),
+        ),
+        ("enum", lambda s: s.__setitem__("enum", ["x"])),
+        ("$ref", lambda s: s.__setitem__("$ref", "#/$defs/x")),
+        (
+            "exclusiveMinimum",
+            lambda s: s["properties"]["confidence"].__setitem__(
+                "exclusiveMinimum", 0
+            ),
+        ),
+        ("anyOf", lambda s: s.__setitem__("anyOf", [{"type": "string"}])),
+    ],
+    ids=["pattern", "enum", "ref", "exclusive_minimum", "any_of"],
+)
+def test_validate_v2_raises_on_unimplemented_keyword(keyword, mutate):
+    schema = _schema_with(mutate)
+    with pytest.raises(ValueError, match=re.escape(keyword)):
+        contract.validate_v2(_conforming(contract.ANSWER_FIRST_V2), schema)
+
+
+def test_validate_v2_raises_on_unimplemented_type():
+    with pytest.raises(ValueError, match="unsupported or missing schema type"):
+        contract.validate_v2(1, {"type": "integer"})
+
+
 # ---------------------------------------------------------------------------
 # 4. validate_v2 accepts conforming objects, including inclusive boundaries
 # ---------------------------------------------------------------------------
@@ -261,7 +297,71 @@ def test_validate_v2_accepts_inclusive_boundaries(confidence):
 
 
 # ---------------------------------------------------------------------------
-# 5. Forced HTTP fallbacks record the variant that actually succeeded
+# 5. Emission-order provenance for each arm
+# ---------------------------------------------------------------------------
+
+
+def test_emitted_key_order_preserves_insertion_order():
+    obj = {
+        "final_answer": "42",
+        "confidence": 0.5,
+        "uncertainty": "none",
+        "derivation": ["step"],
+    }
+    assert contract.emitted_key_order(obj) == (
+        "final_answer",
+        "confidence",
+        "uncertainty",
+        "derivation",
+    )
+
+
+@pytest.mark.parametrize(
+    ("own", "other"),
+    [
+        (contract.ANSWER_FIRST_V2, contract.DERIVATION_FIRST_V2),
+        (contract.DERIVATION_FIRST_V2, contract.ANSWER_FIRST_V2),
+    ],
+    ids=["answer_first", "derivation_first"],
+)
+def test_emission_order_matches_own_schema(own, other):
+    obj = _conforming(own)
+    provenance = contract.emission_order_provenance(obj, own, other)
+    assert provenance["emitted_key_order"] == tuple(own["required"])
+    assert provenance["matches_own_schema"] is True
+    assert provenance["matches_other_schema"] is False
+
+
+@pytest.mark.parametrize(
+    ("own", "other"),
+    [
+        (contract.ANSWER_FIRST_V2, contract.DERIVATION_FIRST_V2),
+        (contract.DERIVATION_FIRST_V2, contract.ANSWER_FIRST_V2),
+    ],
+    ids=["answer_first", "derivation_first"],
+)
+def test_swapped_emission_order_matches_other_schema(own, other):
+    obj = _conforming(other)
+    provenance = contract.emission_order_provenance(obj, own, other)
+    assert provenance["matches_own_schema"] is False
+    assert provenance["matches_other_schema"] is True
+
+
+def test_emitted_key_order_of_non_object_is_empty():
+    assert contract.emitted_key_order(None) == ()
+    assert contract.emitted_key_order(["not", "an", "object"]) == ()
+    result = contract.emission_order_provenance(
+        None, contract.ANSWER_FIRST_V2, contract.DERIVATION_FIRST_V2
+    )
+    assert result == {
+        "emitted_key_order": (),
+        "matches_own_schema": False,
+        "matches_other_schema": False,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 6. Forced HTTP fallbacks record the variant that actually succeeded
 # ---------------------------------------------------------------------------
 
 
@@ -357,11 +457,11 @@ def test_parse_failure_after_fallback_still_records_variant(tmp_path, monkeypatc
 
 
 # ---------------------------------------------------------------------------
-# 6. No-failure path behaves as before and the new fields have defaults
+# 7. Provenance defaults claim no observation; real calls report the truth
 # ---------------------------------------------------------------------------
 
 
-def test_model_response_and_error_defaults_are_additive():
+def test_model_response_defaults_claim_no_observation():
     response = ModelResponse(
         content="{}",
         parsed={},
@@ -373,13 +473,15 @@ def test_model_response_and_error_defaults_are_additive():
         wall_ms=0.0,
         raw={},
     )
-    assert response.protocol_variant == "primary"
-    assert response.schema_enforced is False
+    assert response.protocol_variant == "unknown"
+    assert response.schema_enforced is None
     assert response.think_sent is None
 
+
+def test_manual_model_output_error_claims_no_observation():
     error = ModelOutputError("bad output")
-    assert error.protocol_variant == "primary"
-    assert error.schema_enforced is False
+    assert error.protocol_variant == "unknown"
+    assert error.schema_enforced is None
     assert error.think_sent is None
 
 

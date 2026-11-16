@@ -34,9 +34,9 @@ class ModelResponse:
     raw: dict
     done_reason: str | None = None
     # Provenance of the payload variant that produced the accepted response.
-    # Defaults keep every pre-existing construction working unchanged.
-    protocol_variant: str = "primary"
-    schema_enforced: bool = False
+    # Defaults claim no observation and keep pre-existing constructions valid.
+    protocol_variant: str = "unknown"
+    schema_enforced: bool | None = None
     think_sent: bool | None = None
 
 

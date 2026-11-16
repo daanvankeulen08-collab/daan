@@ -16,11 +16,34 @@ held-out harnesses (``block15/ceiling_research.py`` and
     characters inside a string. Do not use markdown or code fences.
 
 Both schemas have exactly the same shape and constraints.  Only the insertion
-order of ``required`` and ``properties`` differs. ``validate_v2`` enforces
-every declared constraint and never repairs, clamps, or coerces values.
+order of ``required`` and ``properties`` differs.  ``validate_v2`` enforces
+every declared constraint and never repairs, clamps, or coerces values; it
+raises on any schema keyword it does not implement instead of silently
+under-validating.
+
+Contract v2 uses one instruction shared by both arms.  The ceiling study's
+instruction was constant across arms, which is what allowed schema-order
+attribution.  Deliberately neutral wording preserves that: the shared
+instruction lists the fields alphabetically and contains no ordering language,
+so only the schema's required/property order varies between arms.
+
+``emitted_key_order`` and ``emission_order_provenance`` let a runner persist
+the parsed field order and whether it matches each arm's required order.
 """
 
 from __future__ import annotations
+
+__all__ = [
+    "ANSWER_FIRST_V2",
+    "DERIVATION_FIRST_V2",
+    "INSTRUCTIONS_V2",
+    "OUTPUT_INSTRUCTION_V2",
+    "SCHEMAS_V2",
+    "SYSTEM_PROMPT_V2",
+    "emission_order_provenance",
+    "emitted_key_order",
+    "validate_v2",
+]
 
 SYSTEM_PROMPT_V2 = (
     "You are LFM3, a local mathematical reasoning model. Solve the task "
@@ -65,21 +88,12 @@ DERIVATION_FIRST_V2: dict = _schema(
     ("derivation", "final_answer", "uncertainty", "confidence")
 )
 
-ANSWER_FIRST_INSTRUCTION = (
-    "\n\nReturn a JSON object with exactly these fields, in this order: "
-    "final_answer (string), derivation (array of short, independently "
-    "checkable steps), uncertainty (string), confidence (number from 0 to 1). "
-    "Put every string on one line; do not include literal newline characters "
-    "inside string values. Do not use markdown or code fences."
-)
-
-DERIVATION_FIRST_INSTRUCTION = (
-    "\n\nReturn a JSON object with exactly these fields, in this order: "
-    "derivation (array of short, independently checkable steps), final_answer "
-    "(string), uncertainty (string), confidence (number from 0 to 1). Work "
-    "through the derivation first and only then state the final answer. Put "
-    "every string on one line; do not include literal newline characters "
-    "inside string values. Do not use markdown or code fences."
+OUTPUT_INSTRUCTION_V2 = (
+    "\n\nReturn a JSON object with exactly these fields: confidence (number "
+    "from 0 to 1), derivation (array of short, independently checkable steps), "
+    "final_answer (string), uncertainty (string). Put every string on one "
+    "line; do not include literal newline characters inside string values. "
+    "Do not use markdown or code fences."
 )
 
 SCHEMAS_V2: dict[str, dict] = {
@@ -88,9 +102,59 @@ SCHEMAS_V2: dict[str, dict] = {
 }
 
 INSTRUCTIONS_V2: dict[str, str] = {
-    "answer_first": ANSWER_FIRST_INSTRUCTION,
-    "derivation_first": DERIVATION_FIRST_INSTRUCTION,
+    "answer_first": OUTPUT_INSTRUCTION_V2,
+    "derivation_first": OUTPUT_INSTRUCTION_V2,
 }
+
+
+_ALLOWED_KEYWORDS: dict[str, frozenset[str]] = {
+    "object": frozenset(
+        {"type", "additionalProperties", "required", "properties"}
+    ),
+    "array": frozenset({"type", "minItems", "maxItems", "items"}),
+    "string": frozenset({"type", "minLength", "maxLength"}),
+    "number": frozenset({"type", "minimum", "maximum"}),
+}
+
+
+def _assert_supported_schema(schema: object, path: str = "$") -> None:
+    """Raise if ``schema`` uses any keyword or type this validator ignores."""
+    if not isinstance(schema, dict):
+        raise ValueError(f"{path}: schema node must be an object")
+    expected = schema.get("type")
+    if expected not in _ALLOWED_KEYWORDS:
+        raise ValueError(
+            f"{path}: unsupported or missing schema type {expected!r}"
+        )
+    unsupported = sorted(set(schema) - _ALLOWED_KEYWORDS[expected])
+    if unsupported:
+        raise ValueError(
+            f"{path}: unsupported schema keyword(s): {', '.join(unsupported)}"
+        )
+
+    if "properties" in schema:
+        properties = schema["properties"]
+        if not isinstance(properties, dict):
+            raise ValueError(f"{path}.properties: must be an object")
+        for name, rule in properties.items():
+            _assert_supported_schema(rule, f"{path}.properties.{name}")
+
+    if "additionalProperties" in schema:
+        additional = schema["additionalProperties"]
+        if isinstance(additional, dict):
+            _assert_supported_schema(
+                additional, f"{path}.additionalProperties"
+            )
+        elif not isinstance(additional, bool):
+            raise ValueError(
+                f"{path}.additionalProperties: must be a boolean or schema"
+            )
+
+    if "items" in schema:
+        items = schema["items"]
+        if not isinstance(items, dict):
+            raise ValueError(f"{path}.items: must be a schema object")
+        _assert_supported_schema(items, f"{path}.items")
 
 
 def _type_name(value: object) -> str:
@@ -208,8 +272,36 @@ def validate_v2(obj: object, schema: dict) -> tuple[bool, list[str]]:
     """Validate ``obj`` against every constraint declared by ``schema``.
 
     Returns ``(ok, violations)``.  Values are checked as-is: nothing is
-    repaired, clamped, coerced, or dropped.
+    repaired, clamped, coerced, or dropped.  Raises ``ValueError`` if the
+    schema uses a keyword or type this validator does not implement.
     """
+    _assert_supported_schema(schema)
     violations: list[str] = []
     _validate_node(obj, schema, "$", violations)
     return not violations, violations
+
+
+def emitted_key_order(obj: object) -> tuple[str, ...]:
+    """Return ``obj``'s parsed key order, or ``()`` for a non-object."""
+    if not isinstance(obj, dict):
+        return ()
+    return tuple(obj.keys())
+
+
+def emission_order_provenance(
+    obj: object,
+    own_schema: dict,
+    other_schema: dict,
+) -> dict:
+    """Return order-only provenance for one arm's result row.
+
+    ``matches_own_schema`` and ``matches_other_schema`` compare the emitted
+    key order with each schema's ``required`` order.  This is an order check
+    only; it does not validate types, lengths, or values.
+    """
+    emitted = emitted_key_order(obj)
+    return {
+        "emitted_key_order": emitted,
+        "matches_own_schema": emitted == tuple(own_schema["required"]),
+        "matches_other_schema": emitted == tuple(other_schema["required"]),
+    }

@@ -26,8 +26,8 @@ class ModelOutputError(ModelError):
     client also attaches the raw content and the generation metadata that would
     otherwise be lost before a ``ModelResponse`` can be built.  The format
     provenance of the accepted payload is attached as well.  Every added
-    attribute has a default so existing ``ModelOutputError("...")``
-    constructions keep working unchanged.
+    attribute has a default that claims no observation, so existing
+    ``ModelOutputError("...")`` constructions keep working unchanged.
     """
 
     def __init__(
@@ -38,8 +38,8 @@ class ModelOutputError(ModelError):
         done_reason: str | None = None,
         prompt_eval_count: int | None = None,
         eval_count: int | None = None,
-        protocol_variant: str = "primary",
-        schema_enforced: bool = False,
+        protocol_variant: str = "unknown",
+        schema_enforced: bool | None = None,
         think_sent: bool | None = None,
     ) -> None:
         super().__init__(message)
