@@ -33,6 +33,11 @@ class ModelResponse:
     wall_ms: float
     raw: dict
     done_reason: str | None = None
+    # Provenance of the payload variant that produced the accepted response.
+    # Defaults keep every pre-existing construction working unchanged.
+    protocol_variant: str = "primary"
+    schema_enforced: bool = False
+    think_sent: bool | None = None
 
 
 def _extract_json(content: str) -> dict:
@@ -133,23 +138,27 @@ class OllamaClient:
             "keep_alive": self.settings.keep_alive,
         }
 
-        variants: list[dict] = [payload]
+        variants: list[tuple[str, dict]] = [("primary", payload)]
         if isinstance(payload.get("format"), dict):
             fallback = dict(payload)
             fallback["format"] = "json"
-            variants.append(fallback)
-        without_think = dict(variants[-1])
+            variants.append(("json_fallback", fallback))
+        without_think = dict(variants[-1][1])
         without_think.pop("think", None)
-        variants.append(without_think)
+        variants.append(("json_without_think", without_think))
 
         started = perf_counter()
         # Single-flight: no two LFM3 generations may overlap in this process.
         with self._lock:
             response = None
             last_error = "unknown error"
-            for variant in variants:
+            accepted_variant = "primary"
+            accepted_payload = payload
+            for variant_name, variant in variants:
                 response = self._post("/api/chat", variant)
                 if response.status_code < 400:
+                    accepted_variant = variant_name
+                    accepted_payload = variant
                     break
                 last_error = f"HTTP {response.status_code}: {response.text[:400]}"
             wall_ms = (perf_counter() - started) * 1000.0
@@ -157,10 +166,18 @@ class OllamaClient:
         if response is None or response.status_code >= 400:
             raise ModelError(f"Ollama chat failed: {last_error}")
 
+        schema_enforced = isinstance(accepted_payload.get("format"), dict)
+        think_sent = accepted_payload.get("think")
+
         try:
             data = response.json()
         except json.JSONDecodeError as exc:
-            raise ModelOutputError(f"Ollama returned non-JSON: {exc}") from exc
+            raise ModelOutputError(
+                f"Ollama returned non-JSON: {exc}",
+                protocol_variant=accepted_variant,
+                schema_enforced=schema_enforced,
+                think_sent=think_sent,
+            ) from exc
 
         message = data.get("message") or {}
         content = message.get("content", "")
@@ -178,6 +195,9 @@ class OllamaClient:
                 done_reason=done_reason,
                 prompt_eval_count=prompt_eval_count,
                 eval_count=eval_count,
+                protocol_variant=accepted_variant,
+                schema_enforced=schema_enforced,
+                think_sent=think_sent,
             ) from exc
 
         return ModelResponse(
@@ -191,6 +211,9 @@ class OllamaClient:
             wall_ms=wall_ms,
             raw=data,
             done_reason=done_reason,
+            protocol_variant=accepted_variant,
+            schema_enforced=schema_enforced,
+            think_sent=think_sent,
         )
 
     def _post(self, path: str, payload: dict) -> httpx.Response:

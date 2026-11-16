@@ -24,8 +24,9 @@ class ModelOutputError(ModelError):
 
     When the failure happens while parsing a completed Ollama response, the
     client also attaches the raw content and the generation metadata that would
-    otherwise be lost before a ``ModelResponse`` can be built.  All four
-    attributes default to ``None`` so existing ``ModelOutputError("...")``
+    otherwise be lost before a ``ModelResponse`` can be built.  The format
+    provenance of the accepted payload is attached as well.  Every added
+    attribute has a default so existing ``ModelOutputError("...")``
     constructions keep working unchanged.
     """
 
@@ -37,12 +38,18 @@ class ModelOutputError(ModelError):
         done_reason: str | None = None,
         prompt_eval_count: int | None = None,
         eval_count: int | None = None,
+        protocol_variant: str = "primary",
+        schema_enforced: bool = False,
+        think_sent: bool | None = None,
     ) -> None:
         super().__init__(message)
         self.raw_content = raw_content
         self.done_reason = done_reason
         self.prompt_eval_count = prompt_eval_count
         self.eval_count = eval_count
+        self.protocol_variant = protocol_variant
+        self.schema_enforced = schema_enforced
+        self.think_sent = think_sent
 
 
 class ToolError(MdlError):
