@@ -265,7 +265,10 @@ def run_cell(client, store, exp_id, task, cond, state, gt):
     answer = parsed.get("final_answer") if parsed else None
     audit = O.audit_answer(task, gt[task.id], answer)
     gt_tokens = [int(v) for v in gt[task.id]["answer_tokens"]]
-    prompt_copy = any(_number_present(r2_prompt, int(v)) for v in gt_tokens)
+    # copy_possible is about the TASK prompt leaking GT, not the tool result.
+    # The tool result legitimately contains the GT (pre-registration: tool-derived
+    # answers are allowed); it is recorded separately as tool_result_used.
+    prompt_copy = any(_number_present(r1_prompt, int(v)) for v in gt_tokens)
     result_used = bool(
         exec_ == "REAL" and valid and normalized
         and isinstance(tool_result, dict) and "n" in tool_result
@@ -284,6 +287,7 @@ def run_cell(client, store, exp_id, task, cond, state, gt):
         "tool_requested": tool_requested, "tool_request_valid": valid,
         "parameters_correct": pcorr,
         "tool_result": tool_result, "tool_result_used": result_used,
+        "raw_content": r2["content"],  # top-level copy for accounting.failure_flags
         "answer_text": answer,
         "emitted_key_order": list(O.emitted_key_order(parsed)) if parsed else [],
         "matches_own_schema": bool(parsed) and O.emission_order_provenance(
@@ -401,8 +405,71 @@ def run_study() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Analysis
+# Offline recompute of two buggy derived fields (no new generation calls).
 # ---------------------------------------------------------------------------
+
+
+def recompute_derived() -> dict:
+    """Recompute copy_possible, primary_correct and failure_flags offline.
+
+    Two measurement bugs were found in the first run after generation:
+      (1) copy_possible was scanned over the call-2 prompt, which includes the
+          tool result.  For REAL that result legitimately contains the GT
+          tokens, contradicting the pre-registration ('tool-derived answers
+          are allowed').  Correct: scan the task+assistance prompt (r1), which
+          is deterministic from task+level and verified GT-free.
+      (2) accounting.failure_flags needs a top-level 'raw_content'; rows stored
+          it under call2.content, so every cell was falsely marked parse_failed.
+    Only these derived fields are rewritten.  Raw cells (call1/call2 content,
+    tool results, audits, prompts, tokens) are untouched.  A documenting block
+    with before/after values is added to each result file.
+    """
+    task_by_id = {t.id: t for t in O.TASKS}
+    gt = O.ground_truth_manifest()
+    changed = {}
+    for p in sorted(glob.glob(str(DATA_DIR / f"{RESULTS_PREFIX}*.json"))):
+        rec = json.loads(Path(p).read_text(encoding="utf-8"))
+        audit_trail = []
+        for row in rec["results"]:
+            task = task_by_id[row["task_id"]]
+            level = row["level"]
+            gt_tokens = [int(v) for v in gt[task.id]["answer_tokens"]]
+            # r1 prompt reconstruction (deterministic; no execution mode in it).
+            r1_prompt = request_prompt(task, level)
+            new_copy = any(_number_present(r1_prompt, int(v)) for v in gt_tokens)
+            new_primary = bool(row["audit"]["audit_passed"]) and not new_copy
+            # fix accounting input: top-level raw_content from call2.content
+            tmp = dict(row)
+            tmp["raw_content"] = row["call2"]["content"]
+            tmp["copy_possible"] = new_copy
+            tmp["primary_correct"] = new_primary
+            new_flags = A.failure_flags(tmp)
+            if (new_copy != row["copy_possible"]
+                    or new_primary != row["primary_correct"]
+                    or new_flags != row["failure_flags"]):
+                audit_trail.append({
+                    "task_id": row["task_id"],
+                    "before": {"copy_possible": row["copy_possible"],
+                               "primary_correct": row["primary_correct"],
+                               "failure_flags": row["failure_flags"]},
+                    "after": {"copy_possible": new_copy,
+                              "primary_correct": new_primary,
+                              "failure_flags": new_flags},
+                })
+            row["copy_possible"] = new_copy
+            row["primary_correct"] = new_primary
+            row["failure_flags"] = new_flags
+            row["raw_content"] = row["call2"]["content"]
+        rec["corrective_recompute"] = {
+            "reason": "copy_possible scanned tool-result-augmented prompt; "
+                      "failure_flags lacked top-level raw_content",
+            "fields": ["copy_possible", "primary_correct", "failure_flags", "raw_content"],
+            "raw_cells_altered": False,
+            "changes": audit_trail,
+        }
+        Path(p).write_text(json.dumps(rec, ensure_ascii=True, indent=2), encoding="utf-8")
+        changed[Path(p).name] = len(audit_trail)
+    return {"files": changed, "total_rows_changed": sum(changed.values())}
 
 
 def load_results():
@@ -531,6 +598,8 @@ def main(argv=None):
     ap.add_argument("--manifest", action="store_true")
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--recompute", action="store_true",
+                    help="offline fix of two derived fields; no generation")
     ap.add_argument("--summarize", action="store_true")
     a = ap.parse_args(argv)
     if a.manifest:
@@ -554,6 +623,9 @@ def main(argv=None):
         return 0
     if a.run:
         run_study(); return 0
+    if a.recompute:
+        print(json.dumps(recompute_derived(), ensure_ascii=True, indent=2))
+        return 0
     if a.summarize:
         res = summarize()
         (DATA_DIR / SUMMARY_NAME).write_text(

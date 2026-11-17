@@ -66,3 +66,22 @@ def test_parameters_correct():
 
 def test_frozen():
     assert S.verify_frozen()["frozen_byte_identical"] is True
+
+
+def test_copy_surface_is_task_prompt_not_tool_result():
+    """The corrected copy check scans the task/assistance prompt (GT-free),
+    never the tool-result-augmented Call-2 prompt (which legitimately has GT)."""
+    from block15 import accounting as A
+    from block15 import order_v2_research as O
+    t = _task("V2M04_minimal_2n2_plus_6n_plus_1031")
+    gt = O.ground_truth_manifest()[t.id]
+    r1 = S.request_prompt(t, "L3")
+    # task+assistance prompt has no GT token
+    assert not any(__import__("block15.round3", fromlist=["x"])._number_present(r1, int(v))
+                   for v in gt["answer_tokens"])
+    # a passing cell contributes zero failure events (accounting fix target)
+    row = {"primary_correct": True, "status": "ok", "raw_content":
+           '{"final_answer":"n=3, f(3)=1067, 11*97","derivation":["s"],"uncertainty":"u","confidence":0.9}',
+           "validate_v2_ok": True, "done_reason": "stop", "confidence_raw": 0.9,
+           "copy_possible": False}
+    assert A.failure_events([row]) == 0
