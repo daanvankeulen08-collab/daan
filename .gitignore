@@ -8,3 +8,6 @@ __pycache__/
 .env.*
 *.egg-info/
 data/
+main/
+main-search/
+scratch_step0.py

@@ -313,6 +313,7 @@ _NEW_ROOT_FILES = frozenset({
     "PREREG_ORDER_V2.md", "REPORT_ORDER_V2.md",
     "PREREG_DIAGNOSIS.md", "REPORT_DIAGNOSIS.md",
     "PREREG_PLACEBO.md", "REPORT_PLACEBO.md",
+    "PREREG_SKILL_TOOL.md", "REPORT_SKILL_TOOL.md",
 })
 _FROZEN_EXACT_FILES = (
     "block15/ceiling_research.py",
