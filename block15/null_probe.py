@@ -249,13 +249,33 @@ def summarize(record: dict) -> dict:
     return {"per_form": per, "n_cells": len(record["results"])}
 
 
+def report_details(record: dict) -> list[dict]:
+    """Per-cell detail: task, form, label, emitted tool_request value, metadata."""
+    out = []
+    for r in record["results"]:
+        cls = r["classification"]
+        out.append({
+            "form": r["form"], "task": r["task"], "label": cls["label"],
+            "tool_request": cls["value"], "missing_process": cls["missing_process"],
+            "protocol_variant": r["call"]["protocol_variant"],
+            "schema_enforced": r["call"]["schema_enforced"],
+            "raw_content": r["call"]["content"],
+        })
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Null-reachability probe (local Ollama)")
     ap.add_argument("--data-dir", default=None)
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--manifest", action="store_true")
+    ap.add_argument("--report", default=None, help="print per-cell detail from a result file")
     a = ap.parse_args(argv)
     ddir = data_dir(a.data_dir)
+    if a.report:
+        rec = json.loads(Path(a.report).read_text(encoding="utf-8"))
+        print(json.dumps(report_details(rec), ensure_ascii=True, indent=2))
+        return 0
     if a.manifest:
         print(json.dumps({"schemas": {k: v for k, v in probe_schemas().items()},
                           "probe_tasks": list(PROBE_TASKS)}, ensure_ascii=True, indent=2))

@@ -88,6 +88,17 @@ def test_run_probe_fake_client(tmp_path):
     assert list((tmp_path).glob(NP.RESULTS_PREFIX + "*.json"))
 
 
+def test_report_details(tmp_path):
+    client = FakeClient('{"tool_request": null}')
+    rec = NP.run_probe(tmp_path, client=client, store=FakeStore())
+    details = NP.report_details(rec)
+    assert len(details) == 8
+    for d in details:
+        assert d["label"] == "null" and d["tool_request"] is None
+        assert d["protocol_variant"] == "primary" and d["schema_enforced"] is True
+        assert d["task"] in NP.PROBE_TASKS
+
+
 def test_run_probe_mixed_labels(tmp_path):
     client = FakeClient({
         "F1_anyof": '{"tool_request": {"tool": "first_composite_quadratic"}}',
