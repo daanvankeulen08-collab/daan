@@ -40,7 +40,7 @@ backed by the certified scorer `block15/tool_transfer_score.py` and frozen tasks
   - Post-generation change to either ⇒ CONTAMINATED; stop, no re-score.
 - **A6 `--certify`** runs A1–A4 and exits nonzero on any failure. Full output deterministic
   (verified identical across repeated runs). **Certification output SHA-256:**
-  **`fd74465bdcc58257f132e7849c80c6beffd3bcef86ebcd0e754df3a0f1746e`**.
+  **`fd74465bdcc58257f132e7849c80c6beffd3bcefcc86ebcd0e754df3a0f1746e`**.
   No generation was started until certification was green and this hash recorded here.
 
 ## 1. Tasks — SAME 30 frozen V2 tasks
