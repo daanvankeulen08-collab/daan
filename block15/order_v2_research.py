@@ -308,7 +308,7 @@ FROZEN_GROUND_TRUTH_SHA256 = "b0c4d70424d6a678ca840c43bae66afee3116d2637e94ff072
 # excluded and reported separately as NEW artifacts, including this module,
 # the pre-registration/report, the new tests and the new data stores/results.
 _NEW_DATA_PREFIX = "block15_order_v2"
-_NEW_DATA_PREFIXES = ("block15_order_v2", "block15_diagnosis", "block15_placebo", "block15_skill_tool", "block15_tool_transfer", "block15_m2", "block15_null_probe", "block15_integration")
+_NEW_DATA_PREFIXES = ("block15_order_v2", "block15_diagnosis", "block15_placebo", "block15_skill_tool", "block15_tool_transfer", "block15_m2", "block15_null_probe", "block15_integration", "block15_null_micro")
 _NEW_ROOT_FILES = frozenset({
     "PREREG_ORDER_V2.md", "REPORT_ORDER_V2.md",
     "PREREG_DIAGNOSIS.md", "REPORT_DIAGNOSIS.md",
