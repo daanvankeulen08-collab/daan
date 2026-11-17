@@ -186,8 +186,16 @@ def a3_regressions() -> dict:
     r = subprocess.run([PY, "-m", "pytest", "-q", "-o", "addopts=",
                         "tests/test_tool_transfer_v3.py"],
                        capture_output=True, text=True, encoding="utf-8", timeout=180)
+    # Deterministic tail: keep only the pass/fail counts, drop timing.
+    tail = ""
+    for line in reversed(r.stdout.strip().splitlines()):
+        if " passed" in line or " failed" in line:
+            import re as _re
+            m = _re.search(r"(\d+ passed(?:, \d+ failed)?)", line)
+            tail = m.group(1) if m else line
+            break
     return {"returncode": r.returncode, "pass": r.returncode == 0,
-            "tail": r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""}
+            "tail": tail}
 
 
 def certify():
