@@ -8,3 +8,20 @@ __pycache__/
 .env.*
 *.egg-info/
 data/
+
+# DOM / artifact / build outputs (main-search clean-tree policy).
+# These are generated, never source; keep them out of version control.
+dist/
+build/
+out/
+site/
+.next/
+.nuxt/
+.svelte-kit/
+.vite/
+node_modules/
+coverage/
+htmlcov/
+.coverage
+*.log
+*.tsbuildinfo
