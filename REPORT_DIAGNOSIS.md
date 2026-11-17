@@ -124,3 +124,25 @@ C is spoon-fed the true failure class and locus, so it is an **upper bound** on 
 - Generalisation beyond these 12 tasks, one seed and one quantisation.
 - Historical git blob for the new diagnosis files at the baseline commit (absent by construction; reported as `new`).
 
+---
+
+## 10. Correction — single failure-accounting convention (added in STEP 1 of the placebo task)
+
+Under the single convention in `block15/accounting.py` (`failed_cells` = no audited pass;
+`failure_flags` from a FIXED enumerated set; `failure_events` = sum of flag counts over
+NON-PASS cells only; passing cells contribute zero), the DIAGNOSIS totals change. The
+original summary's `total_failure_events` used an ad-hoc flag formula that counted some
+flags on passing cells and omitted others, so it is superseded. No stored result cell was
+altered — flags are re-derived from raw fields via a fresh parse.
+
+| Condition | old total events | corrected failed_cells | corrected failure_events | corrected partition (non-pass cells) |
+|---|---:|---:|---:|---|
+| A (BLIND) | 14 | 12 | 16 | primary_wrong=12, call_error=1, parse_failed=1, truncated=1, confidence_out_of_range=1 |
+| B (LABEL) | 15 | 10 | 20 | primary_wrong=10, call_error=2, parse_failed=2, schema_violation=1, truncated=2, confidence_out_of_range=3 |
+| C (ORACLE) | 12 | 10 | 14 | primary_wrong=10, call_error=1, parse_failed=1, truncated=1, confidence_out_of_range=1 |
+
+The ordering used by the success criterion is unchanged: corrected C failed_cells (10) <=
+corrected A failed_cells (12), and corrected C total events (14) <= corrected A (16), so
+the prior "success criterion met" verdict still holds under the corrected accounting. This
+section is a labelled correction, not a rewrite of stored data.
+

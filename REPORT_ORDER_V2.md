@@ -152,3 +152,25 @@ A pass does not prove general capability, generalisation beyond this one positio
 - Whether the single discarded crashed-attempt call would have changed any result (it was never persisted and cannot be audited).
 - A historical pre-block hash for files that did not exist at `6c788a5`; those LIVE rows are reported as `new` with `before=None`.
 
+---
+
+## 10. Correction — single failure-accounting convention (added in STEP 1 of the placebo task)
+
+A single machine-computed convention is now defined in `block15/accounting.py` and used
+everywhere: `failed_cells` = cells with no audited pass; `failure_flags` = a per-cell list
+from the FIXED enumerated set {call_error, parse_failed, schema_violation, truncated,
+primary_wrong, confidence_out_of_range, copy_possible}; `failure_events` = sum of
+`len(failure_flags)` over NON-PASS cells only (passing cells contribute zero). No stored
+result cell was altered — flags are re-derived from raw fields via a fresh parse.
+
+ORDER_V2 totals, old vs corrected:
+
+| Arm | old total events | corrected failed_cells | corrected failure_events | corrected partition (non-pass cells) |
+|---|---:|---:|---:|---|
+| answer_first | 30 | 30 | 30 | primary_wrong=30 |
+| derivation_first | 16 | 12 | 16 | primary_wrong=12, call_error=1, parse_failed=1, truncated=1, confidence_out_of_range=1 |
+
+The ORDER_V2 numbers are unchanged under the new convention (its old `total_failure_events`
+already summed only non-pass cells). The correction changes the DIAGNOSIS totals — see
+section 10 of `REPORT_DIAGNOSIS.md`. The ORDER_V2 success criterion (30 vs 16) is unaffected.
+
