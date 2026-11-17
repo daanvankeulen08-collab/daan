@@ -40,10 +40,10 @@ MAX_RUNTIME_S = 5400.0
 MIN_FREE_MB = 450.0
 PLANNED_CALLS = 120
 
-STORE_DB_NAME = "block15_tool_transfer.sqlite3"
-STORE_JSONL_NAME = "block15_tool_transfer_events.jsonl"
-RESULTS_PREFIX = "block15_tool_transfer_results_"
-SUMMARY_NAME = "block15_tool_transfer_summary.json"
+STORE_DB_NAME = "block15_tool_transfer_v2.sqlite3"
+STORE_JSONL_NAME = "block15_tool_transfer_v2_events.jsonl"
+RESULTS_PREFIX = "block15_tool_transfer_v2_results_"
+SUMMARY_NAME = "block15_tool_transfer_v2_summary.json"
 
 CONDITIONS = ("L0_REAL", "L0_SHAM")
 SHAM_RESULT = {"status": "unavailable"}
@@ -309,8 +309,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Tool-transfer study (local Ollama only)")
     ap.add_argument("--manifest", action="store_true")
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--certify", action="store_true",
+                    help="offline scorer+runner certification; no Ollama, no generation")
     ap.add_argument("--summarize", action="store_true")
     a = ap.parse_args(argv)
+    if a.certify:
+        from block15 import tool_transfer_certify as CERT
+        return CERT.main([])
     if a.manifest:
         print(json.dumps({
             "scorer_blob_sha256": scorer_blob_hash(),

@@ -281,7 +281,10 @@ def summarize(records, task_ids, tool_needed_ids, scorer_hash, frozen_ok):
     )
     # CO-PRIMARY: false-alarm rate on tool-not-needed
     tnn = set(task_ids) - tn
-    fa_ids = per["L0_REAL"]["requested_ids"] & {x.split("_")[0] for x in tnn}
+    # requested_ids is a list of short ids (see per[c] above); convert explicitly
+    # before set intersection with the short tool-not-needed ids.
+    tnn_short = {x.split("_")[0] for x in tnn}
+    fa_ids = set(per["L0_REAL"]["requested_ids"]) & tnn_short
     fa_rate = round(len(fa_ids) / len(tnn), 4)
     selective = fa_rate <= 0.30
     if not replicated:
