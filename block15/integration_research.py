@@ -147,6 +147,20 @@ def audited_pass(task, answer_text) -> bool:
     return bool(SC.audit_answer(task, task.truth(), answer_text)["audit_passed"])
 
 
+def canonical_pass(row: dict) -> bool:
+    """Read the canonical pass field ``primary_correct``.
+
+    ``audited_pass`` is a retained alias only: it is accepted when the canonical
+    field is absent (legacy rows), but the canonical field always wins.  A row
+    must carry at least one of them; otherwise this raises (guard not weakened).
+    """
+    if "primary_correct" in row:
+        return bool(row["primary_correct"])
+    if "audited_pass" in row:
+        return bool(row["audited_pass"])
+    raise KeyError("row carries neither primary_correct nor audited_pass")
+
+
 # ---------------------------------------------------------------------------
 # Seal / atomic sealed analysis
 # ---------------------------------------------------------------------------
@@ -196,8 +210,17 @@ def summarize(records: dict) -> dict:
     for cond in CONDITIONS:
         rows = records[cond]["results"]
         adopted = sum(1 for r in rows if r["adopted_injected"])
-        passed = sum(1 for r in rows if r["audited_pass"])
+        passed = sum(1 for r in rows if canonical_pass(r))  # canonical field
         meta = [r["task_id"] for r in rows if r["is_meta"]]
+        acct = A.account(rows)
+        part = A.partition(rows)
+        # Cross-check: canonical direct recomputation must equal accounting's
+        # pass accounting.  A mismatch means a field drift (the Block B bug).
+        if acct["audited_passes"] != passed:
+            raise ValueError(
+                f"{cond}: accounting audited_passes={acct['audited_passes']} "
+                f"!= canonical direct recomputation={passed}"
+            )
         per_cond[cond] = {
             "n": len(rows),
             "adopted_injected": adopted,
@@ -205,9 +228,9 @@ def summarize(records: dict) -> dict:
             "audited_passes": passed,
             "P_pass": round(passed / len(rows), 4) if rows else None,
             "meta_cells": meta,
-            "account": A.account(rows),
-            "partition": A.partition(rows),
-            "pass_set": sorted(r["task_id"].split("_")[0] for r in rows if r["audited_pass"]),
+            "account": acct,
+            "partition": part,
+            "pass_set": sorted(r["task_id"].split("_")[0] for r in rows if canonical_pass(r)),
             "injected_values": {r["task_id"].split("_")[0]: r["injected_value"] for r in rows},
         }
     return {"verdict": "SURFACE MISMATCH" if per_cond["PLAUSIBLE"]["adopted_injected"] > 0 else "NO SURFACE ADOPTION",
@@ -308,6 +331,7 @@ def run_cell(client, store, exp_id, task, cond, state):
     parsed = O.fresh_parse(r["content"])
     answer = parsed.get("final_answer") if parsed else None
     injected = injected_value(cond, task.coefficient)
+    pc = audited_pass(task, answer)
     row = {
         "task_id": task.id, "condition": cond, "prompt": prompt,
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
@@ -319,11 +343,13 @@ def run_cell(client, store, exp_id, task, cond, state):
         "validate_v2_ok": bool(parsed) and O.validate_v2(parsed, DERIVATION_FIRST_V2)[0],
         "adopted_injected": adopts(injected, answer),
         "is_meta": is_meta(answer),
-        "audited_pass": audited_pass(task, answer),
+        # CANONICAL pass field (frozen accounting.py reads primary_correct).
+        "primary_correct": pc,
+        "audited_pass": pc,  # alias only; must equal canonical
     }
     store.log_step(exp_id, "integration_cell", cond, row, latency_ms=0.0)
     print(f"  {cond:<10} {task.id:<24} inj={injected!s:<9} adopted={int(row['adopted_injected'])} "
-          f"pass={int(row['audited_pass'])} meta={int(row['is_meta'])} done={r['done_reason']}",
+          f"pass={int(row['primary_correct'])} meta={int(row['is_meta'])} done={r['done_reason']}",
           flush=True)
     return row
 

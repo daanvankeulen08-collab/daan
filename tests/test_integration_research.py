@@ -54,6 +54,49 @@ def test_seal_and_atomic(tmp_path):
         pass
 
 
+def test_integration_accounting_field_mismatch(tmp_path):
+    """Regression for the Block B bug: canonical primary_correct vs audited_pass alias.
+
+    - With the canonical field present and consistent, summarize's counts equal a
+      direct raw recomputation and the accounting invariant passes.
+    - If a row drops the canonical field (audited_pass alias only) or the two
+      disagree, summarize raises / the accounting invariant fails — certify fails.
+    """
+    import copy
+    recs = CERT.fake_run(tmp_path)
+
+    # Healthy case.
+    summ = I.summarize(recs)
+    inv = CERT.accounting_invariant(recs, summ)
+    assert inv["pass"] is True
+    for cond, d in inv["conditions"].items():
+        assert d["missing_canonical"] == 0 and d["alias_conflict"] == 0
+        assert d["direct_passes"] == d["summarize_passes"] == d["account_passes"]
+        assert d["failed_cells"] == d["direct_failed_cells"]
+        assert d["failure_events"] == d["direct_failure_events"]
+
+    # Bug reproduction: strip canonical primary_correct from one row, leaving the
+    # audited_pass alias. The frozen accounting helper sees no primary_correct,
+    # so A.account() reports 0 passes while canonical_pass still counts it — the
+    # cross-check in summarize must raise ValueError.
+    bad = copy.deepcopy(recs)
+    del bad["CORRECT"]["results"][0]["primary_correct"]
+    try:
+        I.summarize(bad)
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised is True, "summarize must detect canonical-field drift"
+
+    # Alias conflict must fail the invariant guard.
+    conflict = copy.deepcopy(recs)
+    conflict["CORRECT"]["results"][0]["primary_correct"] = (
+        not conflict["CORRECT"]["results"][0]["primary_correct"]
+    )
+    inv2 = CERT.accounting_invariant(conflict, I.summarize(conflict))
+    assert inv2["pass"] is False
+
+
 def test_certifier_green_and_deterministic():
     a = CERT.certify(); b = CERT.certify()
     # A5 requires the runner blob at HEAD; before the code commit it is None.

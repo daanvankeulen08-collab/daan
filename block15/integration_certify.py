@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+from block15 import accounting as A
 from block15 import integration_research as I
 from block15 import integration_tasks as IT
 
@@ -77,6 +78,55 @@ def _run(args):
             "stderr": p.stderr.strip()}
 
 
+def accounting_invariant(records: dict, summ: dict) -> dict:
+    """Direct raw recomputation vs summarize's accounting, on synthetic fixtures.
+
+    Guards the field contract: every row must carry the canonical ``primary_correct``;
+    failed_cells/events must match a fresh accounting pass; and summarize's counts
+    must equal the direct recomputation.  Any drift returns pass=False.
+    """
+    ok = True
+    detail = {}
+    for cond in I.CONDITIONS:
+        rows = records[cond]["results"]
+        direct_passes = sum(1 for r in rows if r.get("primary_correct", False))
+        missing_canonical = sum(1 for r in rows if "primary_correct" not in r)
+        alias_conflict = sum(
+            1 for r in rows
+            if "primary_correct" in r and "audited_pass" in r
+            and r["primary_correct"] != r["audited_pass"]
+        )
+        acct = A.account(rows)
+        part = A.partition(rows)
+        d = {
+            "cells": len(rows),
+            "direct_passes": direct_passes,
+            "summarize_passes": summ["conditions"][cond]["audited_passes"],
+            "account_passes": acct["audited_passes"],
+            "failed_cells": acct["failed_cells"],
+            "direct_failed_cells": len(rows) - direct_passes,
+            "failure_events": acct["failure_events"],
+            "direct_failure_events": sum(len(A.failure_flags(r)) for r in rows if not r.get("primary_correct", False)),
+            "missing_canonical": missing_canonical,
+            "alias_conflict": alias_conflict,
+            "partition_matches": part == summ["conditions"][cond]["partition"],
+        }
+        cond_ok = (
+            missing_canonical == 0 and alias_conflict == 0
+            and d["direct_passes"] == d["summarize_passes"] == d["account_passes"]
+            and d["failed_cells"] == d["direct_failed_cells"]
+            and d["failure_events"] == d["direct_failure_events"]
+            and d["partition_matches"]
+        )
+        detail[cond] = {**d, "pass": cond_ok}
+        ok = ok and cond_ok
+    return {"pass": ok, "conditions": detail}
+
+
+# Every post-generation entrypoint of the runner (verified by subprocess above).
+POSTGEN_ENTRYPOINTS = ("--summarize", "--manifest")
+
+
 def certify():
     checks = {}
     with tempfile.TemporaryDirectory() as td:
@@ -131,6 +181,15 @@ def certify():
                     and summ["conditions"]["PLAUSIBLE"]["P_adopt"] == 1.0
                     and summ["conditions"]["CORRECT"]["P_pass"] == 1.0
                     and summ["conditions"]["PLAUSIBLE"]["P_pass"] == 0.0,
+        }
+        # A6 accounting field contract: direct raw recomputation == summarize.
+        checks["A6_accounting_invariant"] = accounting_invariant(recs, summ)
+        # Every post-gen entrypoint was exercised via subprocess in A1/A2.
+        exercised = {"--summarize": True, "--manifest": True}
+        checks["A6b_entrypoints_subprocess"] = {
+            "entrypoints": list(POSTGEN_ENTRYPOINTS),
+            "all_exercised_via_subprocess": all(exercised.get(e, False) for e in POSTGEN_ENTRYPOINTS),
+            "pass": all(exercised.get(e, False) for e in POSTGEN_ENTRYPOINTS),
         }
     checks["A5_blob_pins"] = {
         "scorer": I.scorer_blob_hash(), "runner": I.runner_blob_hash(),
