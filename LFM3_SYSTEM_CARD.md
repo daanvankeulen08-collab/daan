@@ -28,7 +28,8 @@ not parsed; absent fields are UNKNOWN, not filled by assumption.
   `value_length` 128; `rope.dimension_count` 128; `feed_forward_length` 7680.
 - **CONFIRMED** `shortconv.l_cache` 7; blocks 0,1,3,5,… expose `shortconv.conv/in_proj/
   out_proj` weights with `conv` shape `[7,2048]`; blocks 2,4,… expose `attn_gate/k/q/v`
-  weights (`attn_k` `[2048,512]` = 4 kv heads × 128).
+  weights (`attn_k` shape `[2048,512]`). **DERIVED** from those committed shapes:
+  512/128 = 4 kv heads per attention block (key_length 128).
 - **CONFIRMED** `attention.sliding_window` 256; `sliding_window_pattern = [false,…]`
   (per-block, truncated in display); rope bases `freq_base` 1e6 and `freq_base_swa`
   10000.

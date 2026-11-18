@@ -1,41 +1,47 @@
 # FINDINGS — evidence synthesis
 
-Synthesis only. Every number below is sourced from a **committed report** (SHA-256
-listed in the audit trail). Where a figure was supplied in the task brief but is not
-present in any committed report, it is marked **NOT IN COMMITTED SOURCE** and not
+Synthesis only. Every number below is either sourced from a **committed report**
+(SHA-256 listed in the audit trail) or explicitly labeled **DERIVED** from committed
+counts (with the derivation shown). Where a figure was supplied in the task brief but
+is not present in any committed report, it is marked **NOT IN COMMITTED SOURCE** and not
 asserted as a finding. `data/` artifacts are untracked (`git ls-files data/` = 0) and
 are cited only via the SHA-256 values recorded in the committed reports.
 
-## Headline strongest result — ORDER_V2 field-order effect
+## Headline strongest result — ORDER_V2 schema-order effect
 
-- answer_first **0/30** vs derivation_first **18/30** audited non-copy passes; risk
-  difference **+0.6000**, paired bootstrap 95% CI **[0.4333, 0.7667]**; discordant
-  pairs b=0, c=18; **McNemar two-sided exact p = 0.000008** (committed value; artifact
-  field `mcnemar_exact_two_sided_p = 8e-06`).
-  - The brief's "p=7.63e-6" is **NOT IN COMMITTED SOURCE** — the committed report and
-    artifact give 0.000008 / 8e-06 (2/2^18 unrounded equals 7.63e-6, but only the
-    rounded figure is committed).
+- **Validated result:** the schema field-order effect is confirmed — answer_first
+  **0/30** vs derivation_first **18/30** audited non-copy passes; risk difference
+  **+0.6000**, paired bootstrap 95% CI **[0.4333, 0.7667]**; discordant pairs b=0,
+  c=18; McNemar two-sided exact **p = 0.000008** (committed value; artifact field
+  `mcnemar_exact_two_sided_p = 8e-06`). The mechanism is **not quantified in committed
+  sources** (see below).
+  - **DERIVED exact McNemar p** (not stored): from the committed discordant counts
+    b=0, c=18, the exact two-sided McNemar p = 2·(1/2)^18 = 2/2^18 =
+    **7.62939453125e-6**. This is an arithmetic derivation from committed b=0,c=18,
+    not a value stored in a report or artifact; the stored/committed value remains
+    0.000008 / 8e-06.
 - G1 manipulation **PASS** (each arm ≥90% own / ≤10% other key order), G2 length PASS
   (truncation 0/30 vs 1/30). Independent re-audit is documented for the held-out
   study in `REPORT_RESEARCH.md` §8 (20 rows, 0 stored passes failed re-audit, no false
   positives), **not** inside REPORT_ORDER_V2.
-- Mechanism: REPORT_ORDER_V2 §11c says the large effect is "consistent with that
-  forced-commitment mechanism" but "does not isolate it from a generic 'answer before
-  reasoning' penalty." **"9/30 all GT in derivation, none in answer" is NOT IN COMMITTED
-  SOURCE**; a read-only check against the untracked artifact found 1 cell with all GT
-  in derivation and none in answer, and 18 with all GT in derivation — neither equals
-  9. No mechanism count is asserted.
+- **Forced commitment remains a hypothesis.** REPORT_ORDER_V2 §11c states the effect is
+  "consistent with that forced-commitment mechanism" but "does not isolate it from a
+  generic 'answer before reasoning' penalty." Only this qualitative statement is cited;
+  no quantified mechanism is claimed. The "9/30 all GT in derivation, none in answer"
+  figure was cited from an **uncommitted chat audit; it is not in committed sources. A
+  later artifact check reported 18/1, but the matcher rule used for that check is not
+  committed; neither figure is used here.**
 
 ## Ranked validated findings (exact stats, committed sources)
 
 1. **Tool parameter binding, not selection** (`REPORT_TOOL_TRANSFER_V3.md`): tool-needed
-   audited passes REAL 14 vs SHAM 4 (**+10/20**), McNemar exact **p=0.012939** (b=12
-   real-only, c=2 sham-only per read-only artifact check; committed report states
-   "14 gain, 4 loss"). False-alarm rate 1.0 (10/10). G1 PASS. The two tool-needed cells
-   where SHAM passed and REAL failed were **TFM04, TFM13** (tool result present but not
-   reproduced). Success = selection/parameterisation, not unaided arithmetic.
-   - The brief's "b=2 c=12" reverses the committed/checked convention (real-only b=12,
-     sham-only c=2); reported here as committed.
+   audited passes REAL 14 vs SHAM 4 (**+10/20**), **McNemar exact p=0.012939**; the
+   committed report describes the discordance as "14 gain, 4 loss" and a paired risk
+   difference of +0.50. False-alarm rate **1.0** (10/10). G1 PASS. The two tool-needed
+   cells where SHAM passed and REAL failed were **TFM04, TFM13** (tool result present
+   but not reproduced). Success = selection/parameterisation, not unaided arithmetic.
+   - The brief's "b=2 c=12" discordance convention is **NOT IN COMMITTED SOURCE** and is
+     not asserted; only the committed "14 gain, 4 loss" / p=0.012939 is reported.
 2. **Selective integration, no false integrations**: Integration V2 (`REPORT_INTEGRATION_V2.md`)
    REJECT_SURFACE — PLAUSIBLE wrong-adoption 3/20, one-sided upper 95% **0.343664**;
    G1 pass; accounting invariant PASS. SMOOTH study (`REPORT_SMOOTH.md`) —
@@ -57,6 +63,11 @@ are cited only via the SHA-256 values recorded in the committed reports.
 
 ## Retractions / corrected interpretations
 
+- **"9/30 mechanism" figure**: corrected — this was cited from an uncommitted chat
+  audit and is **not in committed sources**. A later artifact check reported 18/1, but
+  the matcher rule for that check is not committed; neither figure is used. Only the
+  qualitative forced-commitment hypothesis from REPORT_ORDER_V2 §11c remains, with no
+  quantified mechanism.
 - **Harness-artifact hypothesis for null**: retracted as a capability claim —
   `PROGRAM_KILL_AMENDMENT.md` states the null branch was not shown reachable in
   practice and the M2 request-based kill was withdrawn as a capability endpoint.
@@ -79,7 +90,7 @@ are cited only via the SHA-256 values recorded in the committed reports.
 
 - Request-refraining mechanism (why the tool is requested on inapplicable tasks).
 - Tool-output answer suppression with n>2 (TFM04/TFM13 are the only tool-hurt cells).
-- Smooth/factor contrast power (Fisher p=0.487, k=0 vs 2).
+- Smooth/factor contrast power (Fisher p=0.487179, k=0 vs 2).
 - Whether integration discrimination reflects true applicability or a task-family
   artifact (SMOOTH values were mostly constant coefficients, FACTOR arbitrary
   composites — `REPORT_SMOOTH.md` objection c).
